@@ -1,0 +1,97 @@
+#include <SFE_BMP180.h>
+#include <Wire.h>
+#include <ESP8266WiFi.h>
+#include "DHT.h"
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085.h>
+
+DHT dht(D5, DHT11);
+Adafruit_BMP085 bmp;
+double T, P;
+char status;
+WiFiClient client;
+
+String apiKey = "Q51UW2DMR1BGM0YI";
+const char *wifiname =  "Walker";
+const char *password =  "ARH206513$$#";
+const char* server = "api.thingspeak.com";
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+  Wire.begin();
+  dht.begin();
+  WiFi.begin(wifiname, password);
+
+  if (!bmp.begin()) {
+    Serial.println("Could not find BMP180 sensor!");
+    while (1);
+  }
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print("Connecting.......");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+}
+
+void loop() {
+  //BMP180 sensor
+  float p = bmp.readPressure();
+  Serial.print("Pressure: ");
+  Serial.print(p);
+  Serial.println(" Pa");
+
+  float seaLevel_hPa = 1015.0;
+  float a = bmp.readAltitude(seaLevel_hPa);
+  Serial.print("Altitude: ");
+  Serial.print(a);
+  Serial.println(" m");
+
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  if (isnan(h) || isnan(t)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  int r = analogRead(A0);
+  r = map(r, 0, 1024, 100, 0);
+
+  if (client.connect(server, 80)) {
+    String postStr = apiKey;
+    postStr += "&field1=";
+    postStr += String(t);
+    postStr += "&field2=";
+    postStr += String(h);
+    postStr += "&field3=";
+    postStr += String(p);
+    postStr += "&field4=";
+    postStr += String(r);
+    postStr += "&field5=";
+    postStr += String(a);
+    postStr += "\r\n\r\n\r\n\r\n";
+
+    client.print("POST /update HTTP/1.1\n");
+    client.print("Host: api.thingspeak.com\n");
+    client.print("Connection: close\n");
+    client.print("X-THINGSPEAKAPIKEY: " + apiKey + "\n");
+    client.print("Content-Type: application/x-www-form-urlencoded\n");
+    client.print("Content-Length: ");
+    client.print(postStr.length());
+    client.print("\n\n\n\n");
+    client.print(postStr);
+
+    Serial.print("Temperature: ");
+    Serial.println(t);
+    Serial.print("Humidity: ");
+    Serial.println(h);
+    Serial.print("Rain");
+    Serial.println(r);
+
+  }
+  client.stop();
+  delay(1000);
+}
